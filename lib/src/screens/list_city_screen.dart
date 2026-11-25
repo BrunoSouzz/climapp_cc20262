@@ -1,11 +1,14 @@
 import 'package:climapp_cc20262/src/controller/list_city_controller.dart';
+import 'package:climapp_cc20262/src/screens/compass_map_screen.dart';
 import 'package:climapp_cc20262/src/screens/weather_city_screen.dart';
 import 'package:climapp_cc20262/src/widgets/city_tile_widget.dart';
 import 'package:climapp_cc20262/src/widgets/nointernet_widget.dart';
 import 'package:flutter/material.dart';
 
 class ListCityScreen extends StatefulWidget {
-  const ListCityScreen({super.key});
+  const ListCityScreen({this.controller, super.key});
+
+  final ListCityController? controller;
 
   @override
   State<ListCityScreen> createState() => _ListCityScreenState();
@@ -13,12 +16,14 @@ class ListCityScreen extends StatefulWidget {
 
 class _ListCityScreenState extends State<ListCityScreen> {
   final TextEditingController textController = TextEditingController();
-
-  final ListCityController controller = ListCityController();
+  late final ListCityController controller;
+  late final bool _ownsController;
 
   @override
   void initState() {
     super.initState();
+    _ownsController = widget.controller == null;
+    controller = widget.controller ?? ListCityController();
     controller.startMonitoring();
     controller.loadCities();
   }
@@ -26,13 +31,30 @@ class _ListCityScreenState extends State<ListCityScreen> {
   @override
   void dispose() {
     textController.dispose();
-    controller.dispose();
+    if (_ownsController) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: const Color(0xFF7693FF),
+        foregroundColor: Colors.black,
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CompassMapScreen()),
+          );
+        },
+        label: const Text(
+          'Ver mapa',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        icon: const Icon(Icons.explore),
+      ),
       body: DecoratedBox(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -78,7 +100,9 @@ class _ListCityScreenState extends State<ListCityScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 12),
+                    _DeviceCountryBanner(controller: controller),
+                    const SizedBox(height: 10),
                     Expanded(child: _buildList()),
                   ],
                 ),
@@ -103,6 +127,7 @@ class _ListCityScreenState extends State<ListCityScreen> {
       );
     }
     return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 80),
       itemCount: controller.filteredCities.length,
       itemBuilder: (context, index) {
         final city = controller.filteredCities[index];
@@ -121,6 +146,55 @@ class _ListCityScreenState extends State<ListCityScreen> {
           },
         );
       },
+    );
+  }
+}
+
+class _DeviceCountryBanner extends StatelessWidget {
+  const _DeviceCountryBanner({required this.controller});
+
+  final ListCityController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final result = controller.deviceCountryResult;
+    final String label = result == null
+        ? 'Identificando país do dispositivo...'
+        : 'País do dispositivo: ${result.displayLabel}';
+    final bool available = result?.isAvailable ?? true;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0x15FFFFFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: available
+              ? const Color(0xFF7693FF).withValues(alpha: 0.45)
+              : Colors.white24,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            available ? Icons.public : Icons.info_outline_rounded,
+            color: available ? const Color(0xFF7693FF) : Colors.white70,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: available ? Colors.white : Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

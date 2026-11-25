@@ -1,5 +1,9 @@
+import 'package:climapp_cc20262/src/controller/list_city_controller.dart';
+import 'package:climapp_cc20262/src/models/weather_forecast_model.dart';
+import 'package:climapp_cc20262/src/screens/weather_city_screen.dart';
 import 'package:climapp_cc20262/src/screens/welcome_screen.dart';
 import 'package:climapp_cc20262/src/services/notification_service.dart';
+import 'package:climapp_cc20262/src/widgets/nointernet_widget.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +15,7 @@ import 'firebase_options.dart';
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint("Background Handler ID: ${message.messageId}");
+  debugPrint('Background Handler ID: ${message.messageId}');
 }
 
 Future<void> main() async {
@@ -42,8 +46,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final notificationService = NotificationService();
+
     return MaterialApp(
-      navigatorKey: NotificationService().navigatorKey,
+      navigatorKey: notificationService.navigatorKey,
+      scaffoldMessengerKey: notificationService.scaffoldMessengerKey,
       title: 'Climapp',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -52,7 +59,103 @@ class MyApp extends StatelessWidget {
           Theme.of(context).textTheme,
         ).apply(bodyColor: Colors.white, displayColor: Colors.white),
       ),
+      onGenerateRoute: (settings) {
+        if (settings.name == '/weather') {
+          final args = settings.arguments;
+          if (args is WeatherForecastModel) {
+            return MaterialPageRoute(
+              builder: (_) => WeatherCityScreen(weatherForecastModel: args),
+            );
+          }
+          if (args is String && args.trim().isNotEmpty) {
+            return MaterialPageRoute(
+              builder: (_) => _WeatherRouteLoaderScreen(cityName: args.trim()),
+            );
+          }
+        }
+        return null;
+      },
       home: const WelcomeScreen(),
+    );
+  }
+}
+
+/// Carrega os dados da cidade recebida via deep link de notificação push.
+class _WeatherRouteLoaderScreen extends StatefulWidget {
+  const _WeatherRouteLoaderScreen({required this.cityName});
+
+  final String cityName;
+
+  @override
+  State<_WeatherRouteLoaderScreen> createState() =>
+      _WeatherRouteLoaderScreenState();
+}
+
+class _WeatherRouteLoaderScreenState extends State<_WeatherRouteLoaderScreen> {
+  late Future<WeatherForecastModel> _forecastFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _forecastFuture = ListCityController.fetchCityForecast(widget.cityName);
+  }
+
+  void _retry() {
+    setState(() {
+      _forecastFuture = ListCityController.fetchCityForecast(widget.cityName);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<WeatherForecastModel>(
+      future: _forecastFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            appBar: AppBar(
+              backgroundColor: const Color(0xFF00457D),
+              foregroundColor: Colors.white,
+              title: Text(widget.cityName),
+            ),
+            body: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[Color(0xFF00457D), Color(0xFF05051F)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          final message = snapshot.error
+              ?.toString()
+              .replaceFirst('Exception: ', '');
+          return Scaffold(
+            appBar: AppBar(
+              backgroundColor: const Color(0xFF00457D),
+              foregroundColor: Colors.white,
+              title: Text(widget.cityName),
+            ),
+            body: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: <Color>[Color(0xFF00457D), Color(0xFF05051F)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: GenericErrorWidget(message: message, onRetry: _retry),
+            ),
+          );
+        }
+
+        return WeatherCityScreen(weatherForecastModel: snapshot.data!);
+      },
     );
   }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:climapp_cc20262/src/enums/enviroments_enum.dart';
 import 'package:climapp_cc20262/src/models/weather_forecast_model.dart';
+import 'package:climapp_cc20262/src/services/device_info_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -11,11 +12,19 @@ import 'package:http/http.dart' as http;
 enum LoadStatus { loading, success, noInternet, error }
 
 class ListCityController extends ChangeNotifier {
+  ListCityController({DeviceInfoService? deviceInfoService})
+    : _deviceInfoService = deviceInfoService ?? DeviceInfoService();
+
+  final DeviceInfoService _deviceInfoService;
+
   List<WeatherForecastModel> allCities = [];
   List<WeatherForecastModel> filteredCities = [];
 
   LoadStatus status = LoadStatus.loading;
   String? errorMessage;
+
+  DeviceCountryResult? deviceCountryResult;
+  String get deviceCountry => deviceCountryResult?.displayLabel ?? '';
 
   bool get isLoading => status == LoadStatus.loading;
 
@@ -34,9 +43,7 @@ class ListCityController extends ChangeNotifier {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   void startMonitoring() {
-    _connectivitySub ??= Connectivity().onConnectivityChanged.listen((
-        results,
-        ) {
+    _connectivitySub ??= Connectivity().onConnectivityChanged.listen((results) {
       final online = !results.contains(ConnectivityResult.none);
       if (online && status == LoadStatus.noInternet) {
         loadCities();
@@ -49,6 +56,11 @@ class ListCityController extends ChangeNotifier {
     return results.contains(ConnectivityResult.none);
   }
 
+  Future<void> loadDeviceCountry() async {
+    deviceCountryResult = await _deviceInfoService.getDeviceCountryDetails();
+    notifyListeners();
+  }
+
   Future<void> loadCities() async {
     if (_requesting) return;
     _requesting = true;
@@ -58,6 +70,10 @@ class ListCityController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Busca país via MethodChannel nativo sem interromper o carregamento em caso de indisponibilidade.
+      deviceCountryResult ??= await _deviceInfoService
+          .getDeviceCountryDetails();
+
       if (await _isOffline()) {
         status = LoadStatus.noInternet;
         return;
@@ -74,7 +90,7 @@ class ListCityController extends ChangeNotifier {
       status = LoadStatus.noInternet;
     } catch (e) {
       debugPrint('Erro ao carregar cidades: $e');
-      errorMessage = e.toString();
+      errorMessage = e.toString().replaceFirst('Exception: ', '');
       status = LoadStatus.error;
     } finally {
       _requesting = false;
@@ -100,39 +116,43 @@ class ListCityController extends ChangeNotifier {
   }
 
   Future<List<WeatherForecastModel>> getWeatherForecast() async {
-    final enumEnv = EnviromentEnum.constants;
+    final List<WeatherForecastModel> listCity = [];
+    for (final city in listCitySearch) {
+      listCity.add(await fetchCityForecast(city));
+    }
+    return listCity;
+  }
+
+  /// Busca a previsão completa de uma cidade específica na API HG Brasil.
+  static Future<WeatherForecastModel> fetchCityForecast(String city) async {
+    const enumEnv = EnviromentEnum.constants;
 
     if (enumEnv.API_KEY.isEmpty) {
       throw Exception(
-        'API_KEY não informada. Rode com --dart-define=API_KEY=sua_chave',
+        'Chave da API não informada. Configure API_KEY no arquivo .env.',
       );
     }
 
-    final List<WeatherForecastModel> listCity = [];
+    final uri = Uri.parse(enumEnv.API_BASE_URL).replace(
+      queryParameters: {'key': enumEnv.API_KEY, 'city_name': city},
+    );
 
-    for (final city in listCitySearch) {
-      final uri = Uri.parse(enumEnv.API_BASE_URL).replace(
-        queryParameters: {'key': enumEnv.API_KEY, 'city_name': city},
-      );
+    final response = await http.get(uri).timeout(_requestTimeout);
 
-      final response = await http.get(uri).timeout(_requestTimeout);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final body = jsonDecode(utf8.decode(response.bodyBytes));
-
-        if (body['valid_key'] == false) {
-          throw Exception('Chave da API HG Brasil inválida');
-        }
-        final results = body['results'];
-        if (results == null) {
-          throw Exception('Resposta da API sem dados para $city');
-        }
-        listCity.add(WeatherForecastModel.fromJson(results));
-      } else {
-        throw Exception('Erro ao carregar dados (HTTP ${response.statusCode})');
+      if (body['valid_key'] == false) {
+        throw Exception('Chave da API HG Brasil inválida');
       }
+      final results = body['results'];
+      if (results == null) {
+        throw Exception('Resposta da API sem dados para $city');
+      }
+      return WeatherForecastModel.fromJson(results);
     }
-    return listCity;
+
+    throw Exception('Erro ao carregar dados (HTTP ${response.statusCode})');
   }
 
   @override

@@ -15,24 +15,40 @@ class CityTileWidget extends StatelessWidget {
   final String icon;
   final int temperature;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     const EnviromentEnum envEnum = EnviromentEnum.constants;
-    return Container(
-      decoration: BoxDecoration(
-        color: Color(0xFF15FFFFFF),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Material(
+        color: const Color(0x15FFFFFF),
         borderRadius: BorderRadius.circular(15),
-      ),
-      margin: .symmetric(vertical: 10),
-      child: ListTile(
-        onTap: onTap,
-        leading: SvgPicture.network('${envEnum.IMAGE_URL}$icon.svg'),
-        titleTextStyle: TextStyle(fontSize: 20),
-        textColor: Colors.white,
-        title: Text(cityName, textAlign: .center),
-        trailing: Text(
-          '${temperature.toString()}°C',
-          style: TextStyle(color: Colors.white, fontSize: 25),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
+          onTap: onTap,
+          leading: SvgPicture.network(
+            '${envEnum.IMAGE_URL}$icon.svg',
+            width: 36,
+            height: 36,
+            placeholderBuilder: (_) => const SizedBox(
+              width: 36,
+              height: 36,
+              child: Icon(Icons.cloud_outlined, color: Colors.white54),
+            ),
+            errorBuilder: (_, _, _) => const SizedBox(
+              width: 36,
+              height: 36,
+              child: Icon(Icons.cloud_off, color: Colors.white54),
+            ),
+          ),
+          titleTextStyle: const TextStyle(fontSize: 20),
+          textColor: Colors.white,
+          title: Text(cityName, textAlign: TextAlign.center),
+          trailing: Text(
+            '${temperature.toString()}°C',
+            style: const TextStyle(color: Colors.white, fontSize: 25),
+          ),
         ),
       ),
     );
